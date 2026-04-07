@@ -1,218 +1,1001 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "cinco-fuegos-pro";
+const STORAGE_KEY = "cinco-fuegos-control-v3";
 
-const productos = [
+const defaultProducts = [
   {
-    nombre: "Fogonero con ruedas 1.20",
-    precio: 750000,
+    id: 1,
+    name: "Fogonero con ruedas 1.20",
+    category: "Fogoneros",
+    price: 750000,
+    includes: "Incluye media parrilla y cruz de asador",
+    active: true,
   },
   {
-    nombre: "Fogonero plano 1.20",
-    precio: 650000,
+    id: 2,
+    name: "Fogonero plano con patas 1.20",
+    category: "Fogoneros",
+    price: 650000,
+    includes: "Incluye media parrilla y cruz de asador",
+    active: true,
+  },
+  {
+    id: 3,
+    name: "Provolera",
+    category: "Accesorios",
+    price: 25000,
+    includes: "",
+    active: true,
+  },
+  {
+    id: 4,
+    name: "Porta provola",
+    category: "Accesorios",
+    price: 15000,
+    includes: "",
+    active: true,
+  },
+  {
+    id: 5,
+    name: "Porta olla",
+    category: "Accesorios",
+    price: 15000,
+    includes: "",
+    active: true,
   },
 ];
 
-function format(n) {
+const defaultVendors = [
+  { id: 1, name: "Lucas", commissionRate: 0.15, active: true },
+  { id: 2, name: "Milagros", commissionRate: 0.15, active: true },
+  { id: 3, name: "Nacho", commissionRate: 0.15, active: true },
+  { id: 4, name: "Joaco", commissionRate: 0.15, active: true },
+  { id: 5, name: "Papá", commissionRate: 0, active: true },
+];
+
+const defaultCategories = [
+  "material",
+  "mano de obra",
+  "envio",
+  "comision",
+  "publicidad",
+  "alquiler",
+  "nafta",
+  "herramientas",
+  "otros",
+];
+
+const initialState = {
+  businessName: "Cinco Fuegos",
+  businessType: "Fogoneros",
+  movements: [],
+  customers: [],
+  products: defaultProducts,
+  vendors: defaultVendors,
+  categories: defaultCategories,
+  chat: [
+    {
+      id: 1,
+      author: "app",
+      text: "Escribí mensajes como: 'vendi fogonero con ruedas 1.20 a 750000 a Juan por Lucas', 'pague hierro 300000', 'mano de obra 120000', 'pague comision a Lucas', 'agrega producto Mesa de comedor a 450000 categoria Muebleria'.",
+      createdAt: new Date().toISOString(),
+    },
+  ],
+};
+
+function formatMoney(n) {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",
     maximumFractionDigits: 0,
-  }).format(n || 0);
+  }).format(Number(n || 0));
 }
 
-export default function App() {
-  const [data, setData] = useState({
-    movimientos: [],
-    pedidos: [],
-    chat: [],
-  });
+function formatDate(d) {
+  return new Date(d).toLocaleString("es-AR");
+}
 
-  const [input, setInput] = useState("");
+function normalize(text) {
+  return (text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[$]/g, "")
+    .trim();
+}
+
+function getAmount(text) {
+  const matches = text.match(/\d[\d.]*/g);
+  if (!matches) return 0;
+  const values = matches.map((v) => Number(v.replace(/\./g, ""))).filter(Boolean);
+  return values.length ? Math.max(...values) : 0;
+}
+
+function inferCategory(text) {
+  const t = normalize(text);
+  if (t.includes("hierro") || t.includes("chapa") || t.includes("material")) return "material";
+  if (t.includes("mano") || t.includes("soldador") || t.includes("pintor")) return "mano de obra";
+  if (t.includes("envio") || t.includes("flete")) return "envio";
+  if (t.includes("comision")) return "comision";
+  if (t.includes("publicidad") || t.includes("meta") || t.includes("instagram")) return "publicidad";
+  if (t.includes("alquiler")) return "alquiler";
+  if (t.includes("nafta") || t.includes("combustible")) return "nafta";
+  if (t.includes("herramienta") || t.includes("amoladora")) return "herramientas";
+  return "otros";
+}
+
+function inferVendor(text, vendors) {
+  const t = normalize(text);
+  return vendors.find((v) => t.includes(normalize(v.name))) || null;
+}
+
+function inferProduct(text, products) {
+  const t = normalize(text);
+  const sorted = [...products].sort((a, b) => b.name.length - a.name.length);
+  const matchByName = sorted.find((p) => t.includes(normalize(p.name)));
+  if (matchByName) return matchByName;
+
+  if (t.includes("ruedas") && t.includes("1.20")) {
+    return products.find((p) => normalize(p.name).includes("ruedas") && normalize(p.name).includes("1.20")) || null;
+  }
+  if (t.includes("plano") && t.includes("1.20")) {
+    return products.find((p) => normalize(p.name).includes("plano") && normalize(p.name).includes("1.20")) || null;
+  }
+  if (t.includes("provolera")) return products.find((p) => normalize(p.name).includes("provolera")) || null;
+  if (t.includes("porta provola")) return products.find((p) => normalize(p.name).includes("porta provola")) || null;
+  if (t.includes("porta olla")) return products.find((p) => normalize(p.name).includes("porta olla")) || null;
+  return null;
+}
+
+function inferCustomer(text) {
+  const original = text.trim();
+  const patterns = [
+    / a ([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúñÑ ]+)/,
+    / para ([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúñÑ ]+)/,
+    / de ([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúñÑ ]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = original.match(pattern);
+    if (match?.[1]) return match[1].trim();
+  }
+  return "";
+}
+
+function addCustomerIfNeeded(state, customerName) {
+  if (!customerName) return state;
+  const exists = state.customers.some((c) => normalize(c.name) === normalize(customerName));
+  if (exists) return state;
+  return {
+    ...state,
+    customers: [
+      { id: Date.now() + Math.random(), name: customerName, createdAt: new Date().toISOString() },
+      ...state.customers,
+    ],
+  };
+}
+
+function parseAddProduct(text) {
+  const original = text.trim();
+  const amount = getAmount(original);
+  const nameMatch = original.match(/agrega producto (.+?) a /i) || original.match(/nuevo producto (.+?) a /i);
+  const categoryMatch = original.match(/categoria ([A-Za-zÁÉÍÓÚáéíóúñÑ ]+)/i);
+  if (!nameMatch || !amount) return null;
+  return {
+    name: nameMatch[1].trim(),
+    price: amount,
+    category: categoryMatch?.[1]?.trim() || "General",
+  };
+}
+
+function processMessage(input, state) {
+  const text = input.trim();
+  const t = normalize(text);
+  const amount = getAmount(text);
+  const product = inferProduct(text, state.products);
+  const vendor = inferVendor(text, state.vendors);
+  const customer = inferCustomer(text);
+
+  if (t.includes("agrega producto") || t.includes("nuevo producto")) {
+    const parsed = parseAddProduct(text);
+    if (!parsed) {
+      return { nextState: state, reply: "No pude crear el producto. Probá: agrega producto Mesa de comedor a 450000 categoria Muebleria" };
+    }
+    const newProduct = {
+      id: Date.now(),
+      name: parsed.name,
+      category: parsed.category,
+      price: parsed.price,
+      includes: "",
+      active: true,
+    };
+    return {
+      nextState: { ...state, products: [newProduct, ...state.products] },
+      reply: `Producto agregado: ${parsed.name} · ${formatMoney(parsed.price)}`,
+    };
+  }
+
+  if (t.includes("actualiza precio") || t.includes("cambiar precio")) {
+    if (!product || !amount) {
+      return { nextState: state, reply: "No pude actualizar el precio. Escribí el producto y el nuevo valor." };
+    }
+    return {
+      nextState: {
+        ...state,
+        products: state.products.map((p) => (p.id === product.id ? { ...p, price: amount } : p)),
+      },
+      reply: `Precio actualizado: ${product.name} → ${formatMoney(amount)}`,
+    };
+  }
+
+  if (t.includes("vendi") || t.includes("venta")) {
+    const saleAmount = amount || product?.price || 0;
+    const commission = vendor ? Math.round(saleAmount * (vendor.commissionRate || 0)) : 0;
+    let nextState = { ...state };
+    nextState = addCustomerIfNeeded(nextState, customer);
+    nextState.movements = [
+      {
+        id: Date.now() + Math.random(),
+        type: "venta",
+        amount: saleAmount,
+        category: "venta",
+        productName: product?.name || "Producto",
+        productCategory: product?.category || "General",
+        customer: customer || "Sin cliente",
+        vendor: vendor?.name || "Sin vendedor",
+        commission,
+        concept: text,
+        createdAt: new Date().toISOString(),
+      },
+      ...nextState.movements,
+    ];
+    return {
+      nextState,
+      reply: `Venta registrada · ${product?.name || "Producto"} · ${formatMoney(saleAmount)}${vendor ? ` · comisión ${formatMoney(commission)}` : ""}`,
+    };
+  }
+
+  if (
+    t.includes("pague") ||
+    t.includes("pago") ||
+    t.includes("compre") ||
+    t.includes("compré") ||
+    t.includes("gasto") ||
+    t.includes("transferi") ||
+    t.includes("transferí") ||
+    t.includes("mano de obra") ||
+    t.includes("envio") ||
+    t.includes("envío")
+  ) {
+    if (t.includes("comision") && vendor && !amount) {
+      const generated = state.movements
+        .filter((m) => m.type === "venta" && normalize(m.vendor) === normalize(vendor.name))
+        .reduce((acc, m) => acc + (m.commission || 0), 0);
+      const paid = state.movements
+        .filter((m) => m.type === "gasto" && m.category === "comision" && normalize(m.vendor || "") === normalize(vendor.name))
+        .reduce((acc, m) => acc + m.amount, 0);
+      const pending = Math.max(generated - paid, 0);
+      const expenseAmount = pending;
+      if (!expenseAmount) {
+        return { nextState: state, reply: `No hay comisión pendiente para ${vendor.name}.` };
+      }
+      return {
+        nextState: {
+          ...state,
+          movements: [
+            {
+              id: Date.now() + Math.random(),
+              type: "gasto",
+              amount: expenseAmount,
+              category: "comision",
+              vendor: vendor.name,
+              concept: `Pago comisión a ${vendor.name}`,
+              createdAt: new Date().toISOString(),
+            },
+            ...state.movements,
+          ],
+        },
+        reply: `Comisión pagada a ${vendor.name} · ${formatMoney(expenseAmount)}`,
+      };
+    }
+
+    const category = inferCategory(text);
+    return {
+      nextState: {
+        ...state,
+        movements: [
+          {
+            id: Date.now() + Math.random(),
+            type: "gasto",
+            amount: amount || 0,
+            category,
+            concept: text,
+            vendor: vendor?.name || "",
+            createdAt: new Date().toISOString(),
+          },
+          ...state.movements,
+        ],
+      },
+      reply: `Gasto registrado · ${category} · ${formatMoney(amount || 0)}`,
+    };
+  }
+
+  return {
+    nextState: state,
+    reply: "No pude entenderlo bien. Probá con venta, gasto, comisión o agregar producto.",
+  };
+}
+
+function MetricCard({ title, value, subtitle }) {
+  return (
+    <div style={styles.metricCard}>
+      <div style={styles.metricTitle}>{title}</div>
+      <div style={styles.metricValue}>{value}</div>
+      {subtitle ? <div style={styles.metricSubtitle}>{subtitle}</div> : null}
+    </div>
+  );
+}
+
+function SectionTitle({ title, subtitle }) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <h2 style={{ margin: 0, fontSize: 22 }}>{title}</h2>
+      {subtitle ? <p style={{ margin: "6px 0 0", color: "#94a3b8" }}>{subtitle}</p> : null}
+    </div>
+  );
+}
+
+function App() {
+  const [state, setState] = useState(initialState);
+  const [message, setMessage] = useState("");
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [typeFilter, setTypeFilter] = useState("todos");
+  const [categoryFilter, setCategoryFilter] = useState("todas");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) setData(JSON.parse(saved));
+    if (saved) {
+      try {
+        setState(JSON.parse(saved));
+      } catch {}
+    }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }, [data]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [state]);
 
-  const resumen = useMemo(() => {
-    const ventas = data.movimientos
-      .filter((m) => m.tipo === "venta")
-      .reduce((a, b) => a + b.monto, 0);
+  const summary = useMemo(() => {
+    const sales = state.movements.filter((m) => m.type === "venta");
+    const expenses = state.movements.filter((m) => m.type === "gasto");
 
-    const gastos = data.movimientos
-      .filter((m) => m.tipo === "gasto")
-      .reduce((a, b) => a + b.monto, 0);
+    const totalSales = sales.reduce((acc, m) => acc + m.amount, 0);
+    const totalExpenses = expenses.reduce((acc, m) => acc + m.amount, 0);
+    const totalCommissionsGenerated = sales.reduce((acc, m) => acc + (m.commission || 0), 0);
+    const totalCommissionsPaid = expenses.filter((m) => m.category === "comision").reduce((acc, m) => acc + m.amount, 0);
+    const pendingCommissions = Math.max(totalCommissionsGenerated - totalCommissionsPaid, 0);
+
+    const byCategory = state.categories.reduce((acc, cat) => {
+      acc[cat] = expenses.filter((m) => m.category === cat).reduce((sum, m) => sum + m.amount, 0);
+      return acc;
+    }, {});
+
+    const productPerformance = state.products.map((product) => {
+      const productSales = sales.filter((m) => normalize(m.productName) === normalize(product.name));
+      const revenue = productSales.reduce((acc, m) => acc + m.amount, 0);
+      const units = productSales.length;
+      return { name: product.name, category: product.category, revenue, units, averagePrice: units ? revenue / units : 0 };
+    }).sort((a, b) => b.revenue - a.revenue);
+
+    const vendorPerformance = state.vendors.map((vendor) => {
+      const vendorSales = sales.filter((m) => normalize(m.vendor) === normalize(vendor.name));
+      const revenue = vendorSales.reduce((acc, m) => acc + m.amount, 0);
+      const generated = vendorSales.reduce((acc, m) => acc + (m.commission || 0), 0);
+      const paid = expenses
+        .filter((m) => m.category === "comision" && normalize(m.vendor || "") === normalize(vendor.name))
+        .reduce((acc, m) => acc + m.amount, 0);
+      return {
+        name: vendor.name,
+        revenue,
+        salesCount: vendorSales.length,
+        generated,
+        paid,
+        pending: Math.max(generated - paid, 0),
+      };
+    }).sort((a, b) => b.revenue - a.revenue);
+
+    const customerPerformance = state.customers.map((customer) => {
+      const customerSales = sales.filter((m) => normalize(m.customer) === normalize(customer.name));
+      const revenue = customerSales.reduce((acc, m) => acc + m.amount, 0);
+      return { name: customer.name, revenue, orders: customerSales.length };
+    }).sort((a, b) => b.revenue - a.revenue);
 
     return {
-      ventas,
-      gastos,
-      resultado: ventas - gastos,
+      totalSales,
+      totalExpenses,
+      totalCommissionsGenerated,
+      totalCommissionsPaid,
+      pendingCommissions,
+      profit: totalSales - totalExpenses - pendingCommissions,
+      byCategory,
+      productPerformance,
+      vendorPerformance,
+      customerPerformance,
+      totalMovements: state.movements.length,
     };
-  }, [data]);
+  }, [state]);
 
-  function detectarProducto(texto) {
-    const t = texto.toLowerCase();
+  const filteredMovements = useMemo(() => {
+    return state.movements.filter((m) => {
+      const matchesType = typeFilter === "todos" || m.type === typeFilter;
+      const matchesCategory = categoryFilter === "todas" || m.category === categoryFilter || m.productCategory === categoryFilter;
+      const text = `${m.concept} ${m.customer || ""} ${m.vendor || ""} ${m.productName || ""}`.toLowerCase();
+      const matchesSearch = text.includes(search.toLowerCase());
+      return matchesType && matchesCategory && matchesSearch;
+    });
+  }, [state.movements, typeFilter, categoryFilter, search]);
 
-    if (t.includes("ruedas")) return productos[0];
-    if (t.includes("plano")) return productos[1];
-
-    return null;
+  function handleSend() {
+    if (!message.trim()) return;
+    const userMessage = {
+      id: Date.now() + Math.random(),
+      author: "yo",
+      text: message,
+      createdAt: new Date().toISOString(),
+    };
+    const { nextState, reply } = processMessage(message, state);
+    const appMessage = {
+      id: Date.now() + Math.random() + 1,
+      author: "app",
+      text: reply,
+      createdAt: new Date().toISOString(),
+    };
+    setState({ ...nextState, chat: [...state.chat, userMessage, appMessage] });
+    setMessage("");
   }
 
-  function procesar() {
-    if (!input.trim()) return;
+  function exportData() {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${state.businessName.toLowerCase().replace(/\s+/g, "-")}-data.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
-    let nuevo = { ...data };
-    const texto = input.toLowerCase();
-
-    // 🔴 VENTA
-    if (texto.includes("vendi")) {
-      const prod = detectarProducto(input);
-
-      const monto = prod ? prod.precio : 0;
-
-      nuevo.movimientos.unshift({
-        tipo: "venta",
-        monto,
-        concepto: prod ? prod.nombre : "Venta",
-      });
-
-      nuevo.chat.push({ autor: "app", texto: `Venta registrada ${format(monto)}` });
+  function resetData() {
+    if (window.confirm("¿Seguro querés borrar todos los datos de esta app?")) {
+      setState(initialState);
     }
-
-    // 🔵 GASTO
-    else if (texto.includes("compre") || texto.includes("gasto")) {
-      const monto = 100000;
-
-      nuevo.movimientos.unshift({
-        tipo: "gasto",
-        monto,
-        concepto: "Gasto",
-      });
-
-      nuevo.chat.push({ autor: "app", texto: `Gasto registrado ${format(monto)}` });
-    }
-
-    // 🟡 PEDIDO
-    else if (texto.includes("pedido")) {
-      const prod = detectarProducto(input);
-
-      nuevo.pedidos.unshift({
-        cliente: input.split("para")[1] || "Cliente",
-        producto: prod ? prod.nombre : "Fogonero",
-        estado: "Pendiente",
-      });
-
-      nuevo.chat.push({ autor: "app", texto: "Pedido creado" });
-    }
-
-    else {
-      nuevo.chat.push({ autor: "app", texto: "No entendí bien el mensaje" });
-    }
-
-    nuevo.chat.push({ autor: "yo", texto: input });
-
-    setData(nuevo);
-    setInput("");
   }
 
   return (
-    <div style={{
-      background: "#0a0a0a",
-      color: "#fff",
-      minHeight: "100vh",
-      padding: 20,
-      fontFamily: "sans-serif"
-    }}>
-
-      <h1 style={{ color: "#e11d48" }}>Cinco Fuegos</h1>
-
-      {/* RESUMEN */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))", gap: 10 }}>
-        <Card title="Ventas" value={format(resumen.ventas)} />
-        <Card title="Gastos" value={format(resumen.gastos)} />
-        <Card title="Resultado" value={format(resumen.resultado)} />
+    <div style={styles.page}>
+      <div style={styles.topBar}>
+        <div>
+          <div style={styles.brandLine}>{state.businessName}</div>
+          <div style={styles.brandSub}>Panel operativo y financiero · pensado para fogoneros hoy y mueblería mañana</div>
+        </div>
+        <div style={styles.topActions}>
+          <button style={styles.secondaryButton} onClick={exportData}>Exportar datos</button>
+          <button style={styles.secondaryButtonDanger} onClick={resetData}>Reiniciar</button>
+        </div>
       </div>
 
-      {/* INPUT */}
-      <div style={{ marginTop: 20 }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ej: vendi fogonero con ruedas"
-          style={inputStyle}
-        />
-        <button onClick={procesar} style={btnStyle}>Enviar</button>
-      </div>
-
-      {/* CHAT */}
-      <div style={boxStyle}>
-        {data.chat.map((c, i) => (
-          <div key={i} style={{
-            background: c.autor === "yo" ? "#e11d48" : "#1a1a1a",
-            padding: 10,
-            borderRadius: 8,
-            marginBottom: 6
-          }}>
-            {c.texto}
-          </div>
+      <div style={styles.navTabs}>
+        {[
+          ["dashboard", "Dashboard"],
+          ["carga", "Cargar"],
+          ["movimientos", "Movimientos"],
+          ["productos", "Productos"],
+          ["equipo", "Equipo"],
+          ["clientes", "Clientes"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            style={activeTab === key ? styles.activeTabButton : styles.tabButton}
+          >
+            {label}
+          </button>
         ))}
       </div>
 
-      {/* PEDIDOS */}
-      <div style={boxStyle}>
-        <h2>Pedidos</h2>
-        {data.pedidos.map((p, i) => (
-          <div key={i}>
-            {p.cliente} - {p.producto} ({p.estado})
+      {activeTab === "dashboard" && (
+        <>
+          <SectionTitle title="Vista general" subtitle="Lo importante, claro y rápido: ventas, gastos, comisiones y rentabilidad real." />
+          <div style={styles.grid4}>
+            <MetricCard title="Ventas totales" value={formatMoney(summary.totalSales)} subtitle={`${summary.totalMovements} movimientos cargados`} />
+            <MetricCard title="Gastos totales" value={formatMoney(summary.totalExpenses)} subtitle="Incluye materiales, mano de obra, envíos y más" />
+            <MetricCard title="Comisión pendiente" value={formatMoney(summary.pendingCommissions)} subtitle={`Generadas: ${formatMoney(summary.totalCommissionsGenerated)}`} />
+            <MetricCard title="Ganancia estimada" value={formatMoney(summary.profit)} subtitle="Ventas - gastos - comisión pendiente" />
           </div>
-        ))}
-      </div>
 
+          <div style={styles.twoCols}>
+            <div style={styles.panel}>
+              <SectionTitle title="Gastos por categoría" subtitle="Para detectar dónde se te va la plata." />
+              <div style={styles.stack}>
+                {state.categories.map((cat) => (
+                  <div key={cat} style={styles.listRow}>
+                    <span style={styles.badge}>{cat}</span>
+                    <strong>{formatMoney(summary.byCategory[cat] || 0)}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.panel}>
+              <SectionTitle title="Productos con mejor desempeño" subtitle="Pensado para fogoneros y escalable a mueblería." />
+              <div style={styles.stack}>
+                {summary.productPerformance.map((p) => (
+                  <div key={p.name} style={styles.listRowBlock}>
+                    <div>
+                      <div style={styles.rowTitle}>{p.name}</div>
+                      <div style={styles.rowSubtitle}>{p.category} · {p.units} venta(s)</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={styles.rowValue}>{formatMoney(p.revenue)}</div>
+                      <div style={styles.rowSubtitle}>Promedio {formatMoney(p.averagePrice)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === "carga" && (
+        <div style={styles.twoCols}>
+          <div style={styles.panel}>
+            <SectionTitle title="Carga por mensaje" subtitle="Escribí como hablás. La app intenta clasificar sola." />
+            <div style={styles.composer}>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                placeholder="Ej: vendi fogonero con ruedas 1.20 a 750000 a Juan por Lucas"
+                style={styles.textarea}
+              />
+              <div style={styles.quickActions}>
+                <button style={styles.quickButton} onClick={() => setMessage("vendi fogonero con ruedas 1.20 a 750000 a Juan por Lucas")}>Venta ejemplo</button>
+                <button style={styles.quickButton} onClick={() => setMessage("pague hierro 300000")}>Material ejemplo</button>
+                <button style={styles.quickButton} onClick={() => setMessage("mano de obra 120000")}>Mano de obra</button>
+                <button style={styles.quickButton} onClick={() => setMessage("pague comision a Lucas")}>Comisión automática</button>
+                <button style={styles.quickButton} onClick={() => setMessage("agrega producto Mesa de comedor a 450000 categoria Muebleria")}>Nuevo producto</button>
+              </div>
+              <button style={styles.primaryButton} onClick={handleSend}>Procesar mensaje</button>
+            </div>
+          </div>
+
+          <div style={styles.panel}>
+            <SectionTitle title="Chat de actividad" subtitle="Confirmaciones rápidas para operar todos los días." />
+            <div style={styles.chatBox}>
+              {state.chat.map((m) => (
+                <div key={m.id} style={m.author === "yo" ? styles.chatUser : styles.chatApp}>
+                  <div>{m.text}</div>
+                  <div style={styles.chatTime}>{formatDate(m.createdAt)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "movimientos" && (
+        <div style={styles.panel}>
+          <SectionTitle title="Movimientos" subtitle="Filtrá ventas y gastos para entender de verdad si el negocio es rentable." />
+          <div style={styles.filtersRow}>
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} style={styles.select}>
+              <option value="todos">Todos los tipos</option>
+              <option value="venta">Ventas</option>
+              <option value="gasto">Gastos</option>
+            </select>
+            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={styles.select}>
+              <option value="todas">Todas las categorías</option>
+              {state.categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+              {[...new Set(state.products.map((p) => p.category))].map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+            </select>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar cliente, producto, vendedor o texto..."
+              style={styles.searchInput}
+            />
+          </div>
+          <div style={styles.stack}>
+            {filteredMovements.length === 0 ? (
+              <div style={styles.emptyState}>No hay movimientos con esos filtros.</div>
+            ) : (
+              filteredMovements.map((m) => (
+                <div key={m.id} style={styles.movementRow}>
+                  <div>
+                    <div style={styles.rowTitle}>{m.concept}</div>
+                    <div style={styles.rowSubtitle}>
+                      {m.type} · {m.category || m.productCategory || "-"}
+                      {m.customer ? ` · cliente: ${m.customer}` : ""}
+                      {m.vendor ? ` · vendedor: ${m.vendor}` : ""}
+                    </div>
+                    <div style={styles.rowSubtitle}>{formatDate(m.createdAt)}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={m.type === "venta" ? styles.amountPositive : styles.amountNegative}>{formatMoney(m.amount)}</div>
+                    {m.commission ? <div style={styles.rowSubtitle}>comisión {formatMoney(m.commission)}</div> : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "productos" && (
+        <div style={styles.twoCols}>
+          <div style={styles.panel}>
+            <SectionTitle title="Catálogo" subtitle="Tu negocio puede arrancar con fogoneros y después vender muebles sin cambiar de sistema." />
+            <div style={styles.stack}>
+              {state.products.map((p) => (
+                <div key={p.id} style={styles.listRowBlock}>
+                  <div>
+                    <div style={styles.rowTitle}>{p.name}</div>
+                    <div style={styles.rowSubtitle}>{p.category}{p.includes ? ` · ${p.includes}` : ""}</div>
+                  </div>
+                  <div style={styles.rowValue}>{formatMoney(p.price)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={styles.panel}>
+            <SectionTitle title="Qué sumar después" subtitle="Para llevar esto al nivel de una empresa muy seria." />
+            <div style={styles.recommendList}>
+              <div style={styles.recommendItem}>Señas y saldos pendientes por cliente</div>
+              <div style={styles.recommendItem}>Costo real por producto para margen exacto</div>
+              <div style={styles.recommendItem}>Estado de producción y entregas</div>
+              <div style={styles.recommendItem}>Stock de materiales y alertas</div>
+              <div style={styles.recommendItem}>Caja diaria y cierre mensual</div>
+              <div style={styles.recommendItem}>Usuarios separados para dueño y vendedores</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "equipo" && (
+        <div style={styles.panel}>
+          <SectionTitle title="Vendedores y comisiones" subtitle="Cuánto vende cada uno, cuánto genera y cuánto queda pendiente de pago." />
+          <div style={styles.stack}>
+            {summary.vendorPerformance.map((v) => (
+              <div key={v.name} style={styles.listRowBlock}>
+                <div>
+                  <div style={styles.rowTitle}>{v.name}</div>
+                  <div style={styles.rowSubtitle}>{v.salesCount} venta(s)</div>
+                </div>
+                <div style={styles.vendorGrid}>
+                  <span>Facturado: <strong>{formatMoney(v.revenue)}</strong></span>
+                  <span>Generado: <strong>{formatMoney(v.generated)}</strong></span>
+                  <span>Pagado: <strong>{formatMoney(v.paid)}</strong></span>
+                  <span>Pendiente: <strong>{formatMoney(v.pending)}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "clientes" && (
+        <div style={styles.panel}>
+          <SectionTitle title="Clientes" subtitle="Para ver quién compra más y empezar a ordenar relaciones comerciales en serio." />
+          <div style={styles.stack}>
+            {summary.customerPerformance.length === 0 ? (
+              <div style={styles.emptyState}>Todavía no hay clientes detectados.</div>
+            ) : (
+              summary.customerPerformance.map((c) => (
+                <div key={c.name} style={styles.listRowBlock}>
+                  <div>
+                    <div style={styles.rowTitle}>{c.name}</div>
+                    <div style={styles.rowSubtitle}>{c.orders} compra(s)</div>
+                  </div>
+                  <div style={styles.rowValue}>{formatMoney(c.revenue)}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Card({ title, value }) {
-  return (
-    <div style={{
-      background: "#111",
-      padding: 15,
-      borderRadius: 12
-    }}>
-      <div style={{ color: "#888" }}>{title}</div>
-      <div style={{ fontSize: 18 }}>{value}</div>
-    </div>
-  );
-}
+export default App;
 
-const inputStyle = {
-  padding: 12,
-  width: "70%",
-  borderRadius: 10,
-  border: "1px solid #333",
-  background: "#111",
-  color: "#fff"
-};
-
-const btnStyle = {
-  padding: 12,
-  marginLeft: 10,
-  background: "#e11d48",
-  color: "#fff",
-  border: "none",
-  borderRadius: 10,
-  cursor: "pointer"
-};
-
-const boxStyle = {
-  background: "#111",
-  padding: 15,
-  borderRadius: 12,
-  marginTop: 20
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background: "linear-gradient(180deg, #09090b 0%, #111827 100%)",
+    color: "#f8fafc",
+    fontFamily: "Inter, Arial, sans-serif",
+    padding: 20,
+  },
+  topBar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 16,
+    flexWrap: "wrap",
+    marginBottom: 20,
+  },
+  brandLine: {
+    fontSize: 34,
+    fontWeight: 800,
+    color: "#f43f5e",
+    letterSpacing: -0.5,
+  },
+  brandSub: {
+    color: "#94a3b8",
+    marginTop: 4,
+  },
+  topActions: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  navTabs: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: 20,
+  },
+  tabButton: {
+    padding: "10px 14px",
+    background: "#111827",
+    color: "#cbd5e1",
+    border: "1px solid #1f2937",
+    borderRadius: 999,
+    cursor: "pointer",
+  },
+  activeTabButton: {
+    padding: "10px 14px",
+    background: "#e11d48",
+    color: "#ffffff",
+    border: "1px solid #e11d48",
+    borderRadius: 999,
+    cursor: "pointer",
+    boxShadow: "0 10px 25px rgba(225,29,72,0.25)",
+  },
+  grid4: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 14,
+    marginBottom: 18,
+  },
+  twoCols: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+    gap: 18,
+  },
+  panel: {
+    background: "rgba(15, 23, 42, 0.9)",
+    border: "1px solid rgba(148, 163, 184, 0.15)",
+    borderRadius: 22,
+    padding: 18,
+    boxShadow: "0 12px 30px rgba(0,0,0,0.25)",
+  },
+  metricCard: {
+    background: "linear-gradient(180deg, rgba(30,41,59,0.98) 0%, rgba(17,24,39,0.98) 100%)",
+    border: "1px solid rgba(148,163,184,0.16)",
+    borderRadius: 22,
+    padding: 18,
+    boxShadow: "0 12px 30px rgba(0,0,0,0.22)",
+  },
+  metricTitle: {
+    color: "#94a3b8",
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  metricValue: {
+    fontSize: 28,
+    fontWeight: 800,
+    letterSpacing: -0.5,
+  },
+  metricSubtitle: {
+    color: "#64748b",
+    fontSize: 12,
+    marginTop: 6,
+  },
+  composer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  textarea: {
+    minHeight: 130,
+    resize: "vertical",
+    borderRadius: 18,
+    border: "1px solid #334155",
+    background: "#020617",
+    color: "#f8fafc",
+    padding: 16,
+    fontSize: 15,
+    outline: "none",
+  },
+  primaryButton: {
+    padding: "14px 18px",
+    borderRadius: 16,
+    background: "#e11d48",
+    color: "#fff",
+    border: "none",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  secondaryButton: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    background: "#111827",
+    color: "#fff",
+    border: "1px solid #374151",
+    cursor: "pointer",
+  },
+  secondaryButtonDanger: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    background: "#3f0d19",
+    color: "#fff",
+    border: "1px solid #7f1d1d",
+    cursor: "pointer",
+  },
+  quickActions: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  quickButton: {
+    padding: "8px 12px",
+    borderRadius: 999,
+    background: "#0f172a",
+    color: "#cbd5e1",
+    border: "1px solid #334155",
+    cursor: "pointer",
+  },
+  chatBox: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    maxHeight: 520,
+    overflow: "auto",
+  },
+  chatUser: {
+    alignSelf: "flex-end",
+    background: "#e11d48",
+    color: "white",
+    padding: 12,
+    borderRadius: 18,
+    maxWidth: "86%",
+  },
+  chatApp: {
+    alignSelf: "flex-start",
+    background: "#111827",
+    color: "#f8fafc",
+    padding: 12,
+    borderRadius: 18,
+    maxWidth: "86%",
+    border: "1px solid #1f2937",
+  },
+  chatTime: {
+    fontSize: 11,
+    marginTop: 6,
+    opacity: 0.7,
+  },
+  stack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  listRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    background: "#0b1220",
+    borderRadius: 16,
+    border: "1px solid #172033",
+  },
+  listRowBlock: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 14,
+    padding: 14,
+    background: "#0b1220",
+    borderRadius: 18,
+    border: "1px solid #172033",
+    flexWrap: "wrap",
+  },
+  badge: {
+    display: "inline-block",
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "#1e293b",
+    color: "#fda4af",
+    fontSize: 12,
+  },
+  rowTitle: {
+    fontWeight: 700,
+    marginBottom: 4,
+  },
+  rowSubtitle: {
+    color: "#94a3b8",
+    fontSize: 13,
+  },
+  rowValue: {
+    fontWeight: 800,
+    fontSize: 18,
+  },
+  filtersRow: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    marginBottom: 16,
+  },
+  select: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    background: "#020617",
+    color: "#fff",
+    border: "1px solid #334155",
+  },
+  searchInput: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    background: "#020617",
+    color: "#fff",
+    border: "1px solid #334155",
+    minWidth: 280,
+    flex: 1,
+  },
+  movementRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    background: "#0b1220",
+    borderRadius: 18,
+    border: "1px solid #172033",
+    flexWrap: "wrap",
+  },
+  amountPositive: {
+    color: "#22c55e",
+    fontWeight: 800,
+    fontSize: 18,
+  },
+  amountNegative: {
+    color: "#fb7185",
+    fontWeight: 800,
+    fontSize: 18,
+  },
+  emptyState: {
+    padding: 18,
+    borderRadius: 18,
+    background: "#0b1220",
+    border: "1px dashed #334155",
+    color: "#94a3b8",
+  },
+  recommendList: {
+    display: "grid",
+    gap: 10,
+  },
+  recommendItem: {
+    padding: 14,
+    borderRadius: 16,
+    background: "#0b1220",
+    border: "1px solid #172033",
+    color: "#e2e8f0",
+  },
+  vendorGrid: {
+    display: "grid",
+    gap: 4,
+    textAlign: "right",
+    color: "#cbd5e1",
+  },
 };
