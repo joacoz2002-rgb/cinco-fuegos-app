@@ -1,81 +1,47 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "cinco-fuegos-control-v4";
+const STORAGE_KEY = "cinco-fuegos-pro-v6";
 
-const defaultProducts = [
-  {
-    id: 1,
-    name: "Fogonero con ruedas 1.20",
-    category: "Fogoneros",
-    price: 750000,
-    estimatedCost: 420000,
-    includes: "Incluye media parrilla y cruz de asador",
-    active: true,
-  },
-  {
-    id: 2,
-    name: "Fogonero plano con patas 1.20",
-    category: "Fogoneros",
-    price: 650000,
-    estimatedCost: 350000,
-    includes: "Incluye media parrilla y cruz de asador",
-    active: true,
-  },
-  {
-    id: 3,
-    name: "Provolera",
-    category: "Accesorios",
-    price: 25000,
-    estimatedCost: 12000,
-    includes: "",
-    active: true,
-  },
-  {
-    id: 4,
-    name: "Porta provola",
-    category: "Accesorios",
-    price: 15000,
-    estimatedCost: 7000,
-    includes: "",
-    active: true,
-  },
-  {
-    id: 5,
-    name: "Porta olla",
-    category: "Accesorios",
-    price: 15000,
-    estimatedCost: 7000,
-    includes: "",
-    active: true,
-  },
-];
-
-const defaultVendors = [
-  { id: 1, name: "Lucas", commissionRate: 0.15, active: true },
-  { id: 2, name: "Milagros", commissionRate: 0.15, active: true },
-  { id: 3, name: "Nacho", commissionRate: 0.15, active: true },
-  { id: 4, name: "Joaco", commissionRate: 0.15, active: true },
-  { id: 5, name: "Papá", commissionRate: 0, active: true },
-];
-
-const defaultCategories = [
-  "material",
-  "mano de obra",
-  "envio",
-  "comision",
-  "publicidad",
-  "alquiler",
-  "nafta",
-  "herramientas",
-  "otros",
-];
+// -------------------- DATOS INICIALES --------------------
 
 const initialState = {
   businessName: "Cinco Fuegos",
-  businessType: "Fogoneros",
-  products: defaultProducts,
-  vendors: defaultVendors,
-  categories: defaultCategories,
+  products: [
+    {
+      id: 1,
+      name: "Fogonero con ruedas 1.20",
+      category: "Fogoneros",
+      price: 750000,
+      cost: 420000,
+      includes: "Incluye media parrilla y cruz de asador",
+      active: true,
+    },
+    {
+      id: 2,
+      name: "Fogonero plano 1.20",
+      category: "Fogoneros",
+      price: 650000,
+      cost: 350000,
+      includes: "Incluye media parrilla y cruz de asador",
+      active: true,
+    },
+    {
+      id: 3,
+      name: "Provolera",
+      category: "Accesorios",
+      price: 25000,
+      cost: 12000,
+      includes: "",
+      active: true,
+    },
+  ],
+  vendors: [
+    { id: 1, name: "Lucas", commissionRate: 0.15, active: true },
+    { id: 2, name: "Milagros", commissionRate: 0.15, active: true },
+    { id: 3, name: "Nacho", commissionRate: 0.15, active: true },
+    { id: 4, name: "Joaco", commissionRate: 0.15, active: true },
+    { id: 5, name: "Papá", commissionRate: 0, active: true },
+  ],
   customers: [],
   movements: [],
   chat: [
@@ -83,11 +49,13 @@ const initialState = {
       id: 1,
       author: "app",
       text:
-        "Probá mensajes como: 'vendi fogonero con ruedas 1.20 a 750000 a Juan por Lucas', 'pague hierro 300000', 'mano de obra 120000', 'pague comision a Lucas', 'agrega producto Mesa de comedor a 450000 costo 260000 categoria Muebleria'.",
+        "Probá mensajes como: 'agrega cliente Juan telefono 1123456789 direccion Palermo 1234', 'vendi fogonero con ruedas 1.20 a Juan por Lucas', 'seña 200000 de Juan', 'pague hierro 300000', 'pague comision a Lucas', 'agrega producto Mesa de comedor a 450000 costo 260000 categoria Muebleria'.",
       createdAt: new Date().toISOString(),
     },
   ],
 };
+
+// -------------------- HELPERS --------------------
 
 function formatMoney(n) {
   return new Intl.NumberFormat("es-AR", {
@@ -121,36 +89,14 @@ function getAmount(text) {
   return values.length ? Math.max(...values) : 0;
 }
 
-function inferCategory(text) {
-  const t = normalize(text);
-  if (t.includes("hierro") || t.includes("chapa") || t.includes("material")) return "material";
-  if (t.includes("mano") || t.includes("soldador") || t.includes("pintor")) return "mano de obra";
-  if (t.includes("envio") || t.includes("envío") || t.includes("flete")) return "envio";
-  if (t.includes("comision")) return "comision";
-  if (t.includes("publicidad") || t.includes("meta") || t.includes("instagram") || t.includes("facebook")) return "publicidad";
-  if (t.includes("alquiler")) return "alquiler";
-  if (t.includes("nafta") || t.includes("combustible")) return "nafta";
-  if (t.includes("herramienta") || t.includes("amoladora")) return "herramientas";
-  return "otros";
-}
-
 function inferVendor(text, vendors) {
   const t = normalize(text);
   return vendors.find((v) => t.includes(normalize(v.name))) || null;
 }
 
-function inferCustomer(text) {
-  const original = text.trim();
-  const patterns = [
-    / a ([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúñÑ ]+)/,
-    / para ([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúñÑ ]+)/,
-    / de ([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚáéíóúñÑ ]+)/,
-  ];
-  for (const pattern of patterns) {
-    const match = original.match(pattern);
-    if (match?.[1]) return match[1].trim();
-  }
-  return "";
+function inferCustomer(text, customers) {
+  const t = normalize(text);
+  return customers.find((c) => t.includes(normalize(c.name))) || null;
 }
 
 function inferProduct(text, products) {
@@ -171,14 +117,35 @@ function inferProduct(text, products) {
   if (t.includes("provolera")) {
     return products.find((p) => normalize(p.name).includes("provolera")) || null;
   }
-  if (t.includes("porta provola")) {
-    return products.find((p) => normalize(p.name).includes("porta provola")) || null;
-  }
-  if (t.includes("porta olla")) {
-    return products.find((p) => normalize(p.name).includes("porta olla")) || null;
-  }
 
   return null;
+}
+
+function inferExpenseCategory(text) {
+  const t = normalize(text);
+  if (t.includes("hierro") || t.includes("chapa") || t.includes("material")) return "material";
+  if (t.includes("mano") || t.includes("soldador") || t.includes("pintor")) return "mano de obra";
+  if (t.includes("envio") || t.includes("envío") || t.includes("flete")) return "envio";
+  if (t.includes("comision")) return "comision";
+  if (t.includes("publicidad") || t.includes("meta") || t.includes("instagram") || t.includes("facebook")) return "publicidad";
+  if (t.includes("alquiler")) return "alquiler";
+  if (t.includes("nafta") || t.includes("combustible")) return "nafta";
+  if (t.includes("herramienta")) return "herramientas";
+  return "otros";
+}
+
+function parseAddCustomer(text) {
+  const nameMatch = text.match(/agrega cliente (.+?) telefono/i);
+  const phoneMatch = text.match(/telefono (\d+)/i);
+  const addressMatch = text.match(/direccion (.+)/i);
+
+  if (!nameMatch) return null;
+
+  return {
+    name: nameMatch[1].trim(),
+    phone: phoneMatch?.[1] || "",
+    address: addressMatch?.[1]?.trim() || "",
+  };
 }
 
 function parseAddProduct(text) {
@@ -189,7 +156,6 @@ function parseAddProduct(text) {
 
   const allAmounts = getAllAmounts(original);
   const price = allAmounts[0] || 0;
-
   const costMatch = original.match(/costo (\d[\d.]*)/i);
   const categoryMatch = original.match(/categoria ([A-Za-zÁÉÍÓÚáéíóúñÑ ]+)/i);
 
@@ -198,232 +164,18 @@ function parseAddProduct(text) {
   return {
     name: nameMatch[1].trim(),
     price,
-    estimatedCost: costMatch ? Number(costMatch[1].replace(/\./g, "")) : 0,
+    cost: costMatch ? Number(costMatch[1].replace(/\./g, "")) : 0,
     category: categoryMatch?.[1]?.trim() || "General",
   };
 }
 
-function addCustomerIfNeeded(state, customerName) {
-  if (!customerName) return state;
-  const exists = state.customers.some((c) => normalize(c.name) === normalize(customerName));
-  if (exists) return state;
-
-  return {
-    ...state,
-    customers: [
-      {
-        id: Date.now() + Math.random(),
-        name: customerName,
-        createdAt: new Date().toISOString(),
-      },
-      ...state.customers,
-    ],
-  };
-}
-
-function processMessage(input, state) {
-  const text = input.trim();
-  const t = normalize(text);
-  const amount = getAmount(text);
-  const product = inferProduct(text, state.products);
-  const vendor = inferVendor(text, state.vendors);
-  const customer = inferCustomer(text);
-
-  if (t.includes("agrega producto") || t.includes("nuevo producto")) {
-    const parsed = parseAddProduct(text);
-    if (!parsed) {
-      return {
-        nextState: state,
-        reply:
-          "No pude crear el producto. Probá: agrega producto Mesa de comedor a 450000 costo 260000 categoria Muebleria",
-      };
-    }
-
-    const newProduct = {
-      id: Date.now(),
-      name: parsed.name,
-      category: parsed.category,
-      price: parsed.price,
-      estimatedCost: parsed.estimatedCost || 0,
-      includes: "",
-      active: true,
-    };
-
-    return {
-      nextState: {
-        ...state,
-        products: [newProduct, ...state.products],
-      },
-      reply: `Producto agregado: ${parsed.name} · ${formatMoney(parsed.price)}`,
-    };
-  }
-
-  if (t.includes("actualiza precio") || t.includes("cambiar precio")) {
-    if (!product || !amount) {
-      return {
-        nextState: state,
-        reply: "No pude actualizar el precio. Escribí el producto y el nuevo valor.",
-      };
-    }
-
-    return {
-      nextState: {
-        ...state,
-        products: state.products.map((p) =>
-          p.id === product.id ? { ...p, price: amount } : p
-        ),
-      },
-      reply: `Precio actualizado: ${product.name} → ${formatMoney(amount)}`,
-    };
-  }
-
-  if (t.includes("actualiza costo") || t.includes("cambiar costo")) {
-    if (!product || !amount) {
-      return {
-        nextState: state,
-        reply: "No pude actualizar el costo. Escribí el producto y el nuevo costo.",
-      };
-    }
-
-    return {
-      nextState: {
-        ...state,
-        products: state.products.map((p) =>
-          p.id === product.id ? { ...p, estimatedCost: amount } : p
-        ),
-      },
-      reply: `Costo actualizado: ${product.name} → ${formatMoney(amount)}`,
-    };
-  }
-
-  if (t.includes("vendi") || t.includes("venta")) {
-    const saleAmount = amount || product?.price || 0;
-    const commission = vendor ? Math.round(saleAmount * (vendor.commissionRate || 0)) : 0;
-    const estimatedCost = product?.estimatedCost || 0;
-    const unitMargin = saleAmount - estimatedCost - commission;
-
-    let nextState = { ...state };
-    nextState = addCustomerIfNeeded(nextState, customer);
-
-    nextState.movements = [
-      {
-        id: Date.now() + Math.random(),
-        type: "venta",
-        amount: saleAmount,
-        category: "venta",
-        productId: product?.id || null,
-        productName: product?.name || "Producto",
-        productCategory: product?.category || "General",
-        estimatedCost,
-        customer: customer || "Sin cliente",
-        vendor: vendor?.name || "Sin vendedor",
-        commission,
-        unitMargin,
-        concept: text,
-        createdAt: new Date().toISOString(),
-      },
-      ...nextState.movements,
-    ];
-
-    return {
-      nextState,
-      reply: `Venta registrada · ${product?.name || "Producto"} · ${formatMoney(
-        saleAmount
-      )}${vendor ? ` · comisión ${formatMoney(commission)}` : ""}`,
-    };
-  }
-
-  if (
-    t.includes("pague") ||
-    t.includes("pago") ||
-    t.includes("compre") ||
-    t.includes("compré") ||
-    t.includes("gasto") ||
-    t.includes("transferi") ||
-    t.includes("transferí") ||
-    t.includes("mano de obra") ||
-    t.includes("envio") ||
-    t.includes("envío")
-  ) {
-    if (t.includes("comision") && vendor && !amount) {
-      const generated = state.movements
-        .filter((m) => m.type === "venta" && normalize(m.vendor) === normalize(vendor.name))
-        .reduce((acc, m) => acc + (m.commission || 0), 0);
-
-      const paid = state.movements
-        .filter(
-          (m) =>
-            m.type === "gasto" &&
-            m.category === "comision" &&
-            normalize(m.vendor || "") === normalize(vendor.name)
-        )
-        .reduce((acc, m) => acc + m.amount, 0);
-
-      const pending = Math.max(generated - paid, 0);
-
-      if (!pending) {
-        return {
-          nextState: state,
-          reply: `No hay comisión pendiente para ${vendor.name}.`,
-        };
-      }
-
-      return {
-        nextState: {
-          ...state,
-          movements: [
-            {
-              id: Date.now() + Math.random(),
-              type: "gasto",
-              amount: pending,
-              category: "comision",
-              vendor: vendor.name,
-              concept: `Pago comisión a ${vendor.name}`,
-              createdAt: new Date().toISOString(),
-            },
-            ...state.movements,
-          ],
-        },
-        reply: `Comisión pagada a ${vendor.name} · ${formatMoney(pending)}`,
-      };
-    }
-
-    const category = inferCategory(text);
-
-    return {
-      nextState: {
-        ...state,
-        movements: [
-          {
-            id: Date.now() + Math.random(),
-            type: "gasto",
-            amount: amount || 0,
-            category,
-            concept: text,
-            vendor: vendor?.name || "",
-            createdAt: new Date().toISOString(),
-          },
-          ...state.movements,
-        ],
-      },
-      reply: `Gasto registrado · ${category} · ${formatMoney(amount || 0)}`,
-    };
-  }
-
-  return {
-    nextState: state,
-    reply:
-      "No pude entenderlo bien. Probá con venta, gasto, comisión o agregar producto.",
-  };
-}
+// -------------------- COMPONENTES UI --------------------
 
 function SectionTitle({ title, subtitle }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <h2 style={{ margin: 0, fontSize: 22 }}>{title}</h2>
-      {subtitle ? (
-        <p style={{ margin: "6px 0 0", color: "#94a3b8" }}>{subtitle}</p>
-      ) : null}
+      {subtitle ? <p style={{ margin: "6px 0 0", color: "#94a3b8" }}>{subtitle}</p> : null}
     </div>
   );
 }
@@ -438,7 +190,9 @@ function MetricCard({ title, value, subtitle }) {
   );
 }
 
-function App() {
+// -------------------- APP --------------------
+
+export default function App() {
   const [state, setState] = useState(initialState);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -459,158 +213,263 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
-  const summary = useMemo(() => {
-    const sales = state.movements.filter((m) => m.type === "venta");
-    const expenses = state.movements.filter((m) => m.type === "gasto");
-
-    const totalSales = sales.reduce((acc, m) => acc + m.amount, 0);
-    const totalExpenses = expenses.reduce((acc, m) => acc + m.amount, 0);
-
-    const totalCommissionsGenerated = sales.reduce(
-      (acc, m) => acc + (m.commission || 0),
-      0
-    );
-    const totalCommissionsPaid = expenses
-      .filter((m) => m.category === "comision")
-      .reduce((acc, m) => acc + m.amount, 0);
-
-    const pendingCommissions = Math.max(
-      totalCommissionsGenerated - totalCommissionsPaid,
-      0
-    );
-
-    const byCategory = state.categories.reduce((acc, cat) => {
-      acc[cat] = expenses
-        .filter((m) => m.category === cat)
-        .reduce((sum, m) => sum + m.amount, 0);
-      return acc;
-    }, {});
-
-    const productPerformance = state.products
-      .map((product) => {
-        const productSales = sales.filter(
-          (m) => normalize(m.productName) === normalize(product.name)
-        );
-        const revenue = productSales.reduce((acc, m) => acc + m.amount, 0);
-        const units = productSales.length;
-        const commissions = productSales.reduce(
-          (acc, m) => acc + (m.commission || 0),
-          0
-        );
-        const estimatedCostTotal = productSales.reduce(
-          (acc, m) => acc + (m.estimatedCost || 0),
-          0
-        );
-        const margin = revenue - commissions - estimatedCostTotal;
-
-        return {
-          id: product.id,
-          name: product.name,
-          category: product.category,
-          revenue,
-          units,
-          estimatedCostTotal,
-          commissions,
-          margin,
-          averagePrice: units ? revenue / units : 0,
-          price: product.price,
-          estimatedCost: product.estimatedCost || 0,
-        };
-      })
-      .sort((a, b) => b.revenue - a.revenue);
-
-    const vendorPerformance = state.vendors
-      .map((vendor) => {
-        const vendorSales = sales.filter(
-          (m) => normalize(m.vendor) === normalize(vendor.name)
-        );
-        const revenue = vendorSales.reduce((acc, m) => acc + m.amount, 0);
-        const generated = vendorSales.reduce(
-          (acc, m) => acc + (m.commission || 0),
-          0
-        );
-        const paid = expenses
-          .filter(
-            (m) =>
-              m.category === "comision" &&
-              normalize(m.vendor || "") === normalize(vendor.name)
-          )
-          .reduce((acc, m) => acc + m.amount, 0);
-
-        return {
-          name: vendor.name,
-          revenue,
-          salesCount: vendorSales.length,
-          generated,
-          paid,
-          pending: Math.max(generated - paid, 0),
-        };
-      })
-      .sort((a, b) => b.revenue - a.revenue);
-
-    const customerPerformance = state.customers
-      .map((customer) => {
-        const customerSales = sales.filter(
-          (m) => normalize(m.customer) === normalize(customer.name)
-        );
-        const revenue = customerSales.reduce((acc, m) => acc + m.amount, 0);
-        return { name: customer.name, revenue, orders: customerSales.length };
-      })
-      .sort((a, b) => b.revenue - a.revenue);
-
+  function addChat(author, text, baseState = state) {
     return {
-      totalSales,
-      totalExpenses,
-      totalCommissionsGenerated,
-      totalCommissionsPaid,
-      pendingCommissions,
-      profit: totalSales - totalExpenses - pendingCommissions,
-      byCategory,
-      productPerformance,
-      vendorPerformance,
-      customerPerformance,
-      totalMovements: state.movements.length,
+      ...baseState,
+      chat: [
+        ...baseState.chat,
+        {
+          id: Date.now() + Math.random(),
+          author,
+          text,
+          createdAt: new Date().toISOString(),
+        },
+      ],
     };
-  }, [state]);
+  }
 
-  const filteredMovements = useMemo(() => {
-    return state.movements.filter((m) => {
-      const matchesType = typeFilter === "todos" || m.type === typeFilter;
-      const matchesCategory =
-        categoryFilter === "todas" ||
-        m.category === categoryFilter ||
-        m.productCategory === categoryFilter;
-
-      const text = `${m.concept} ${m.customer || ""} ${m.vendor || ""} ${
-        m.productName || ""
-      }`.toLowerCase();
-
-      const matchesSearch = text.includes(search.toLowerCase());
-
-      return matchesType && matchesCategory && matchesSearch;
-    });
-  }, [state.movements, typeFilter, categoryFilter, search]);
-
-  function handleSend() {
+  function handleMessage() {
     if (!message.trim()) return;
 
-    const userMessage = {
-      id: Date.now() + Math.random(),
-      author: "yo",
-      text: message,
-      createdAt: new Date().toISOString(),
-    };
+    let nextState = addChat("yo", message, state);
+    const text = message.trim();
+    const t = normalize(text);
+    const amount = getAmount(text);
+    const vendor = inferVendor(text, nextState.vendors);
+    const customer = inferCustomer(text, nextState.customers);
+    const product = inferProduct(text, nextState.products);
 
-    const { nextState, reply } = processMessage(message, state);
+    // -------- AGREGAR CLIENTE --------
+    if (t.includes("agrega cliente")) {
+      const parsed = parseAddCustomer(text);
+      if (!parsed) {
+        setState(addChat("app", "No pude crear el cliente.", nextState));
+        setMessage("");
+        return;
+      }
 
-    const appMessage = {
-      id: Date.now() + Math.random() + 1,
-      author: "app",
-      text: reply,
-      createdAt: new Date().toISOString(),
-    };
+      nextState = {
+        ...nextState,
+        customers: [
+          {
+            id: Date.now(),
+            name: parsed.name,
+            phone: parsed.phone,
+            address: parsed.address,
+            createdAt: new Date().toISOString(),
+          },
+          ...nextState.customers,
+        ],
+      };
 
-    setState({ ...nextState, chat: [...state.chat, userMessage, appMessage] });
+      setState(addChat("app", `Cliente agregado: ${parsed.name}`, nextState));
+      setMessage("");
+      return;
+    }
+
+    // -------- AGREGAR PRODUCTO --------
+    if (t.includes("agrega producto") || t.includes("nuevo producto")) {
+      const parsed = parseAddProduct(text);
+
+      if (!parsed) {
+        setState(
+          addChat(
+            "app",
+            "No pude crear el producto. Probá: agrega producto Mesa de comedor a 450000 costo 260000 categoria Muebleria",
+            nextState
+          )
+        );
+        setMessage("");
+        return;
+      }
+
+      nextState = {
+        ...nextState,
+        products: [
+          {
+            id: Date.now(),
+            name: parsed.name,
+            category: parsed.category,
+            price: parsed.price,
+            cost: parsed.cost,
+            includes: "",
+            active: true,
+          },
+          ...nextState.products,
+        ],
+      };
+
+      setState(addChat("app", `Producto agregado: ${parsed.name}`, nextState));
+      setMessage("");
+      return;
+    }
+
+    // -------- VENTA --------
+    if (t.includes("vendi") || t.includes("venta")) {
+      const saleAmount = amount || product?.price || 0;
+      const cost = product?.cost || 0;
+      const commission = vendor ? Math.round(saleAmount * (vendor.commissionRate || 0)) : 0;
+      const margin = saleAmount - cost - commission;
+
+      nextState = {
+        ...nextState,
+        movements: [
+          {
+            id: Date.now() + Math.random(),
+            type: "venta",
+            concept: text,
+            productId: product?.id || null,
+            productName: product?.name || "Producto",
+            productCategory: product?.category || "General",
+            customerId: customer?.id || null,
+            customerName: customer?.name || "",
+            total: saleAmount,
+            paid: 0,
+            pending: saleAmount,
+            cost,
+            commission,
+            vendorName: vendor?.name || "",
+            margin,
+            status: "pendiente",
+            createdAt: new Date().toISOString(),
+          },
+          ...nextState.movements,
+        ],
+      };
+
+      setState(
+        addChat(
+          "app",
+          `Venta registrada: ${product?.name || "Producto"} · ${formatMoney(saleAmount)}`,
+          nextState
+        )
+      );
+      setMessage("");
+      return;
+    }
+
+    // -------- SEÑA --------
+    if (t.includes("seña") || t.includes("sena")) {
+      if (!customer) {
+        setState(addChat("app", "No encontré el cliente para cargar la seña.", nextState));
+        setMessage("");
+        return;
+      }
+
+      let updated = false;
+
+      nextState = {
+        ...nextState,
+        movements: nextState.movements.map((m) => {
+          if (
+            !updated &&
+            m.type === "venta" &&
+            normalize(m.customerName) === normalize(customer.name)
+          ) {
+            const newPaid = (m.paid || 0) + amount;
+            const newPending = Math.max((m.total || 0) - newPaid, 0);
+            updated = true;
+            return {
+              ...m,
+              paid: newPaid,
+              pending: newPending,
+              status: newPending === 0 ? "cobrado" : "con seña",
+            };
+          }
+          return m;
+        }),
+      };
+
+      setState(
+        addChat("app", `Seña registrada para ${customer.name}: ${formatMoney(amount)}`, nextState)
+      );
+      setMessage("");
+      return;
+    }
+
+    // -------- PAGO COMISION AUTOMATICA --------
+    if (t.includes("comision") && vendor && (t.includes("pague") || t.includes("pago"))) {
+      const generated = nextState.movements
+        .filter((m) => m.type === "venta" && normalize(m.vendorName) === normalize(vendor.name))
+        .reduce((acc, m) => acc + (m.commission || 0), 0);
+
+      const paid = nextState.movements
+        .filter(
+          (m) =>
+            m.type === "gasto" &&
+            m.category === "comision" &&
+            normalize(m.vendorName || "") === normalize(vendor.name)
+        )
+        .reduce((acc, m) => acc + (m.amount || 0), 0);
+
+      const pending = Math.max(generated - paid, 0);
+
+      if (!pending) {
+        setState(addChat("app", `No hay comisión pendiente para ${vendor.name}.`, nextState));
+        setMessage("");
+        return;
+      }
+
+      nextState = {
+        ...nextState,
+        movements: [
+          {
+            id: Date.now() + Math.random(),
+            type: "gasto",
+            concept: `Pago comisión a ${vendor.name}`,
+            amount: pending,
+            category: "comision",
+            vendorName: vendor.name,
+            createdAt: new Date().toISOString(),
+          },
+          ...nextState.movements,
+        ],
+      };
+
+      setState(
+        addChat("app", `Comisión pagada a ${vendor.name}: ${formatMoney(pending)}`, nextState)
+      );
+      setMessage("");
+      return;
+    }
+
+    // -------- GASTO --------
+    if (
+      t.includes("pague") ||
+      t.includes("pago") ||
+      t.includes("compre") ||
+      t.includes("compré") ||
+      t.includes("gasto") ||
+      t.includes("transferi") ||
+      t.includes("transferí") ||
+      t.includes("mano de obra") ||
+      t.includes("envio") ||
+      t.includes("envío")
+    ) {
+      const category = inferExpenseCategory(text);
+
+      nextState = {
+        ...nextState,
+        movements: [
+          {
+            id: Date.now() + Math.random(),
+            type: "gasto",
+            concept: text,
+            amount,
+            category,
+            vendorName: vendor?.name || "",
+            createdAt: new Date().toISOString(),
+          },
+          ...nextState.movements,
+        ],
+      };
+
+      setState(addChat("app", `Gasto registrado: ${formatMoney(amount)}`, nextState));
+      setMessage("");
+      return;
+    }
+
+    setState(addChat("app", "No entendí bien el mensaje.", nextState));
     setMessage("");
   }
 
@@ -621,7 +480,7 @@ function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${state.businessName.toLowerCase().replace(/\s+/g, "-")}-data.json`;
+    a.download = "cinco-fuegos-data.json";
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -630,6 +489,24 @@ function App() {
     if (window.confirm("¿Seguro querés borrar todos los datos?")) {
       setState(initialState);
     }
+  }
+
+  function updateProduct(id, field, value) {
+    setState((prev) => ({
+      ...prev,
+      products: prev.products.map((p) =>
+        p.id === id ? { ...p, [field]: value } : p
+      ),
+    }));
+  }
+
+  function updateCustomer(id, field, value) {
+    setState((prev) => ({
+      ...prev,
+      customers: prev.customers.map((c) =>
+        c.id === id ? { ...c, [field]: value } : c
+      ),
+    }));
   }
 
   function updateMovement(id, field, value) {
@@ -649,18 +526,96 @@ function App() {
     }));
   }
 
+  const summary = useMemo(() => {
+    const sales = state.movements.filter((m) => m.type === "venta");
+    const expenses = state.movements.filter((m) => m.type === "gasto");
+
+    const totalSales = sales.reduce((acc, m) => acc + (m.total || 0), 0);
+    const totalCollected = sales.reduce((acc, m) => acc + (m.paid || 0), 0);
+    const totalPending = sales.reduce((acc, m) => acc + (m.pending || 0), 0);
+    const totalExpenses = expenses.reduce((acc, m) => acc + (m.amount || 0), 0);
+    const totalCommissionGenerated = sales.reduce((acc, m) => acc + (m.commission || 0), 0);
+    const totalCost = sales.reduce((acc, m) => acc + (m.cost || 0), 0);
+    const totalMargin = sales.reduce((acc, m) => acc + (m.margin || 0), 0);
+
+    const productPerformance = state.products.map((p) => {
+      const productSales = sales.filter(
+        (m) => normalize(m.productName) === normalize(p.name)
+      );
+      const units = productSales.length;
+      const revenue = productSales.reduce((acc, m) => acc + (m.total || 0), 0);
+      const costs = productSales.reduce((acc, m) => acc + (m.cost || 0), 0);
+      const commissions = productSales.reduce((acc, m) => acc + (m.commission || 0), 0);
+      const margin = revenue - costs - commissions;
+
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        units,
+        revenue,
+        costs,
+        commissions,
+        margin,
+      };
+    });
+
+    const customerSales = state.customers.map((c) => {
+      const salesForCustomer = sales.filter(
+        (m) => normalize(m.customerName) === normalize(c.name)
+      );
+      const total = salesForCustomer.reduce((acc, m) => acc + (m.total || 0), 0);
+      const paid = salesForCustomer.reduce((acc, m) => acc + (m.paid || 0), 0);
+      const pending = salesForCustomer.reduce((acc, m) => acc + (m.pending || 0), 0);
+
+      return {
+        ...c,
+        orders: salesForCustomer.length,
+        total,
+        paid,
+        pending,
+      };
+    });
+
+    return {
+      totalSales,
+      totalCollected,
+      totalPending,
+      totalExpenses,
+      totalCommissionGenerated,
+      totalCost,
+      totalMargin,
+      productPerformance,
+      customerSales,
+    };
+  }, [state]);
+
+  const filteredMovements = useMemo(() => {
+    return state.movements.filter((m) => {
+      const typeOk = typeFilter === "todos" || m.type === typeFilter;
+      const categoryOk =
+        categoryFilter === "todas" ||
+        m.category === categoryFilter ||
+        m.productCategory === categoryFilter;
+      const text = `${m.concept || ""} ${m.customerName || ""} ${m.vendorName || ""} ${m.productName || ""}`.toLowerCase();
+      const searchOk = text.includes(search.toLowerCase());
+
+      return typeOk && categoryOk && searchOk;
+    });
+  }, [state.movements, typeFilter, categoryFilter, search]);
+
   return (
     <div style={styles.page}>
       <div style={styles.topBar}>
         <div>
-          <div style={styles.brandLine}>{state.businessName}</div>
+          <div style={styles.brandLine}>🔥 {state.businessName}</div>
           <div style={styles.brandSub}>
-            Panel operativo y financiero · sirve para fogoneros hoy y mueblería mañana
+            Panel para ventas, clientes, productos, señas y rentabilidad
           </div>
         </div>
         <div style={styles.topActions}>
           <button style={styles.secondaryButton} onClick={exportData}>
-            Exportar datos
+            Exportar
           </button>
           <button style={styles.secondaryButtonDanger} onClick={resetData}>
             Reiniciar
@@ -671,10 +626,9 @@ function App() {
       <div style={styles.navTabs}>
         {[
           ["dashboard", "Dashboard"],
-          ["carga", "Cargar"],
+          ["cargar", "Cargar"],
           ["movimientos", "Movimientos"],
           ["productos", "Productos"],
-          ["equipo", "Equipo"],
           ["clientes", "Clientes"],
         ].map(([key, label]) => (
           <button
@@ -691,52 +645,37 @@ function App() {
         <>
           <SectionTitle
             title="Vista general"
-            subtitle="Lo importante, claro y rápido: ventas, gastos, comisiones y rentabilidad."
+            subtitle="Lo importante del negocio, rápido y claro."
           />
 
           <div style={styles.grid4}>
             <MetricCard
-              title="Ventas totales"
+              title="Vendido"
               value={formatMoney(summary.totalSales)}
-              subtitle={`${summary.totalMovements} movimientos cargados`}
+              subtitle="Total de ventas"
             />
             <MetricCard
-              title="Gastos totales"
-              value={formatMoney(summary.totalExpenses)}
-              subtitle="Materiales, mano de obra, envíos y más"
+              title="Cobrado"
+              value={formatMoney(summary.totalCollected)}
+              subtitle="Incluye señas"
             />
             <MetricCard
-              title="Comisión pendiente"
-              value={formatMoney(summary.pendingCommissions)}
-              subtitle={`Generadas: ${formatMoney(summary.totalCommissionsGenerated)}`}
+              title="Pendiente"
+              value={formatMoney(summary.totalPending)}
+              subtitle="Saldo por cobrar"
             />
             <MetricCard
-              title="Ganancia estimada"
-              value={formatMoney(summary.profit)}
-              subtitle="Ventas - gastos - comisión pendiente"
+              title="Margen estimado"
+              value={formatMoney(summary.totalMargin)}
+              subtitle="Ventas - costo - comisión"
             />
           </div>
 
           <div style={styles.twoCols}>
             <div style={styles.panel}>
               <SectionTitle
-                title="Gastos por categoría"
-                subtitle="Para entender en qué se va la plata."
-              />
-              <div style={styles.stack}>
-                {state.categories.map((cat) => (
-                  <div key={cat} style={styles.listRow}>
-                    <span style={styles.badge}>{cat}</span>
-                    <strong>{formatMoney(summary.byCategory[cat] || 0)}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div style={styles.panel}>
-              <SectionTitle
                 title="Margen por producto"
-                subtitle="Clave para saber qué conviene vender."
+                subtitle="Para ver qué conviene vender."
               />
               <div style={styles.stack}>
                 {summary.productPerformance.map((p) => (
@@ -749,7 +688,7 @@ function App() {
                     </div>
                     <div style={styles.vendorGrid}>
                       <span>Facturación: <strong>{formatMoney(p.revenue)}</strong></span>
-                      <span>Costo estimado: <strong>{formatMoney(p.estimatedCostTotal)}</strong></span>
+                      <span>Costos: <strong>{formatMoney(p.costs)}</strong></span>
                       <span>Comisiones: <strong>{formatMoney(p.commissions)}</strong></span>
                       <span>Margen: <strong>{formatMoney(p.margin)}</strong></span>
                     </div>
@@ -757,44 +696,80 @@ function App() {
                 ))}
               </div>
             </div>
+
+            <div style={styles.panel}>
+              <SectionTitle
+                title="Clientes y saldos"
+                subtitle="Para saber a quién entregarle y cuánto falta cobrar."
+              />
+              <div style={styles.stack}>
+                {summary.customerSales.length === 0 ? (
+                  <div style={styles.emptyState}>Todavía no hay clientes.</div>
+                ) : (
+                  summary.customerSales.map((c) => (
+                    <div key={c.id} style={styles.listRowBlock}>
+                      <div>
+                        <div style={styles.rowTitle}>{c.name}</div>
+                        <div style={styles.rowSubtitle}>
+                          {c.phone || "Sin teléfono"} · {c.address || "Sin dirección"}
+                        </div>
+                      </div>
+                      <div style={styles.vendorGrid}>
+                        <span>Total: <strong>{formatMoney(c.total)}</strong></span>
+                        <span>Cobrado: <strong>{formatMoney(c.paid)}</strong></span>
+                        <span>Pendiente: <strong>{formatMoney(c.pending)}</strong></span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </>
       )}
 
-      {activeTab === "carga" && (
+      {activeTab === "cargar" && (
         <div style={styles.twoCols}>
           <div style={styles.panel}>
             <SectionTitle
               title="Carga por mensaje"
-              subtitle="Escribí como hablás. La app intenta clasificar sola."
+              subtitle="Escribí como hablás."
             />
             <div style={styles.composer}>
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Ej: vendi fogonero con ruedas 1.20 a 750000 a Juan por Lucas"
+                placeholder="Ej: vendi fogonero con ruedas 1.20 a Juan por Lucas"
                 style={styles.textarea}
               />
               <div style={styles.quickActions}>
                 <button
                   style={styles.quickButton}
                   onClick={() =>
-                    setMessage("vendi fogonero con ruedas 1.20 a 750000 a Juan por Lucas")
+                    setMessage("agrega cliente Juan telefono 1123456789 direccion Palermo 1234")
+                  }
+                >
+                  Cliente ejemplo
+                </button>
+                <button
+                  style={styles.quickButton}
+                  onClick={() =>
+                    setMessage("vendi fogonero con ruedas 1.20 a Juan por Lucas")
                   }
                 >
                   Venta ejemplo
                 </button>
                 <button
                   style={styles.quickButton}
-                  onClick={() => setMessage("pague hierro 300000")}
+                  onClick={() => setMessage("seña 200000 de Juan")}
                 >
-                  Material ejemplo
+                  Seña ejemplo
                 </button>
                 <button
                   style={styles.quickButton}
-                  onClick={() => setMessage("mano de obra 120000")}
+                  onClick={() => setMessage("pague hierro 300000")}
                 >
-                  Mano de obra
+                  Gasto ejemplo
                 </button>
                 <button
                   style={styles.quickButton}
@@ -805,25 +780,20 @@ function App() {
                 <button
                   style={styles.quickButton}
                   onClick={() =>
-                    setMessage(
-                      "agrega producto Mesa de comedor a 450000 costo 260000 categoria Muebleria"
-                    )
+                    setMessage("agrega producto Mesa de comedor a 450000 costo 260000 categoria Muebleria")
                   }
                 >
-                  Nuevo producto
+                  Producto nuevo
                 </button>
               </div>
-              <button style={styles.primaryButton} onClick={handleSend}>
+              <button style={styles.primaryButton} onClick={handleMessage}>
                 Procesar mensaje
               </button>
             </div>
           </div>
 
           <div style={styles.panel}>
-            <SectionTitle
-              title="Chat de actividad"
-              subtitle="Confirmaciones rápidas para operar todos los días."
-            />
+            <SectionTitle title="Actividad" subtitle="Confirmaciones rápidas." />
             <div style={styles.chatBox}>
               {state.chat.map((m) => (
                 <div key={m.id} style={m.author === "yo" ? styles.chatUser : styles.chatApp}>
@@ -840,7 +810,7 @@ function App() {
         <div style={styles.panel}>
           <SectionTitle
             title="Movimientos"
-            subtitle="Filtrá, buscá, editá y corregí."
+            subtitle="Buscá, filtrá, editá y corregí."
           />
 
           <div style={styles.filtersRow}>
@@ -860,11 +830,15 @@ function App() {
               style={styles.select}
             >
               <option value="todas">Todas las categorías</option>
-              {state.categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
+              <option value="material">material</option>
+              <option value="mano de obra">mano de obra</option>
+              <option value="envio">envio</option>
+              <option value="comision">comision</option>
+              <option value="publicidad">publicidad</option>
+              <option value="alquiler">alquiler</option>
+              <option value="nafta">nafta</option>
+              <option value="herramientas">herramientas</option>
+              <option value="otros">otros</option>
               {[...new Set(state.products.map((p) => p.category))].map((cat) => (
                 <option key={cat} value={cat}>
                   {cat}
@@ -875,7 +849,7 @@ function App() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar cliente, producto, vendedor o texto..."
+              placeholder="Buscar..."
               style={styles.searchInput}
             />
           </div>
@@ -893,36 +867,44 @@ function App() {
                       style={styles.editInput}
                     />
                     <div style={styles.rowSubtitle}>
-                      {m.type} · {m.category || m.productCategory || "-"}
-                      {m.customer ? ` · cliente: ${m.customer}` : ""}
-                      {m.vendor ? ` · vendedor: ${m.vendor}` : ""}
+                      {m.type}
+                      {m.type === "venta" ? ` · ${m.productName || ""}` : ""}
+                      {m.category ? ` · ${m.category}` : ""}
+                      {m.customerName ? ` · cliente: ${m.customerName}` : ""}
                     </div>
                     <div style={styles.rowSubtitle}>{formatDate(m.createdAt)}</div>
                   </div>
 
                   <div style={styles.editSide}>
-                    <input
-                      type="number"
-                      value={m.amount || 0}
-                      onChange={(e) =>
-                        updateMovement(m.id, "amount", Number(e.target.value))
-                      }
-                      style={styles.editAmount}
-                    />
-
-                    {m.type === "gasto" ? (
-                      <select
-                        value={m.category || "otros"}
-                        onChange={(e) => updateMovement(m.id, "category", e.target.value)}
-                        style={styles.editSelect}
-                      >
-                        {state.categories.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
+                    {m.type === "venta" ? (
+                      <>
+                        <input
+                          type="number"
+                          value={m.total || 0}
+                          onChange={(e) =>
+                            updateMovement(m.id, "total", Number(e.target.value))
+                          }
+                          style={styles.editAmount}
+                        />
+                        <input
+                          type="number"
+                          value={m.paid || 0}
+                          onChange={(e) =>
+                            updateMovement(m.id, "paid", Number(e.target.value))
+                          }
+                          style={styles.editAmount}
+                        />
+                      </>
+                    ) : (
+                      <input
+                        type="number"
+                        value={m.amount || 0}
+                        onChange={(e) =>
+                          updateMovement(m.id, "amount", Number(e.target.value))
+                        }
+                        style={styles.editAmount}
+                      />
+                    )}
 
                     <button
                       onClick={() => deleteMovement(m.id)}
@@ -939,68 +921,36 @@ function App() {
       )}
 
       {activeTab === "productos" && (
-        <div style={styles.twoCols}>
-          <div style={styles.panel}>
-            <SectionTitle
-              title="Catálogo"
-              subtitle="Fogoneros hoy, mueblería mañana. Todo en el mismo sistema."
-            />
-            <div style={styles.stack}>
-              {state.products.map((p) => (
-                <div key={p.id} style={styles.listRowBlock}>
-                  <div>
-                    <div style={styles.rowTitle}>{p.name}</div>
-                    <div style={styles.rowSubtitle}>
-                      {p.category}
-                      {p.includes ? ` · ${p.includes}` : ""}
-                    </div>
-                  </div>
-                  <div style={styles.vendorGrid}>
-                    <span>Precio: <strong>{formatMoney(p.price)}</strong></span>
-                    <span>Costo: <strong>{formatMoney(p.estimatedCost || 0)}</strong></span>
-                    <span>Margen unitario estimado: <strong>{formatMoney((p.price || 0) - (p.estimatedCost || 0))}</strong></span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={styles.panel}>
-            <SectionTitle
-              title="Qué sumar después"
-              subtitle="Para llevarlo a nivel muy serio."
-            />
-            <div style={styles.recommendList}>
-              <div style={styles.recommendItem}>Señas y saldo pendiente por cliente</div>
-              <div style={styles.recommendItem}>Costo real por orden en vez de estimado</div>
-              <div style={styles.recommendItem}>Estado de producción y entregas</div>
-              <div style={styles.recommendItem}>Stock de materiales y alertas</div>
-              <div style={styles.recommendItem}>Caja diaria y cierre mensual</div>
-              <div style={styles.recommendItem}>Usuarios separados para dueño y vendedores</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === "equipo" && (
         <div style={styles.panel}>
           <SectionTitle
-            title="Vendedores y comisiones"
-            subtitle="Cuánto vende cada uno, cuánto genera y cuánto sigue pendiente."
+            title="Productos"
+            subtitle="Editá nombre, precio, costo y categoría."
           />
           <div style={styles.stack}>
-            {summary.vendorPerformance.map((v) => (
-              <div key={v.name} style={styles.listRowBlock}>
-                <div>
-                  <div style={styles.rowTitle}>{v.name}</div>
-                  <div style={styles.rowSubtitle}>{v.salesCount} venta(s)</div>
-                </div>
-                <div style={styles.vendorGrid}>
-                  <span>Facturado: <strong>{formatMoney(v.revenue)}</strong></span>
-                  <span>Generado: <strong>{formatMoney(v.generated)}</strong></span>
-                  <span>Pagado: <strong>{formatMoney(v.paid)}</strong></span>
-                  <span>Pendiente: <strong>{formatMoney(v.pending)}</strong></span>
-                </div>
+            {state.products.map((p) => (
+              <div key={p.id} style={styles.productEditRow}>
+                <input
+                  value={p.name}
+                  onChange={(e) => updateProduct(p.id, "name", e.target.value)}
+                  style={styles.editInput}
+                />
+                <input
+                  value={p.category}
+                  onChange={(e) => updateProduct(p.id, "category", e.target.value)}
+                  style={styles.editInputSmall}
+                />
+                <input
+                  type="number"
+                  value={p.price}
+                  onChange={(e) => updateProduct(p.id, "price", Number(e.target.value))}
+                  style={styles.editInputSmall}
+                />
+                <input
+                  type="number"
+                  value={p.cost}
+                  onChange={(e) => updateProduct(p.id, "cost", Number(e.target.value))}
+                  style={styles.editInputSmall}
+                />
               </div>
             ))}
           </div>
@@ -1011,21 +961,55 @@ function App() {
         <div style={styles.panel}>
           <SectionTitle
             title="Clientes"
-            subtitle="Para ver quién compra más y empezar a ordenar relaciones comerciales."
+            subtitle="Tocás el cliente y ya tenés teléfono, dirección y deuda."
           />
           <div style={styles.stack}>
-            {summary.customerPerformance.length === 0 ? (
-              <div style={styles.emptyState}>Todavía no hay clientes detectados.</div>
+            {state.customers.length === 0 ? (
+              <div style={styles.emptyState}>Todavía no hay clientes cargados.</div>
             ) : (
-              summary.customerPerformance.map((c) => (
-                <div key={c.name} style={styles.listRowBlock}>
-                  <div>
-                    <div style={styles.rowTitle}>{c.name}</div>
-                    <div style={styles.rowSubtitle}>{c.orders} compra(s)</div>
+              state.customers.map((c) => {
+                const customerSales = state.movements.filter(
+                  (m) => m.type === "venta" && normalize(m.customerName) === normalize(c.name)
+                );
+                const total = customerSales.reduce((acc, m) => acc + (m.total || 0), 0);
+                const paid = customerSales.reduce((acc, m) => acc + (m.paid || 0), 0);
+                const pending = customerSales.reduce((acc, m) => acc + (m.pending || 0), 0);
+
+                return (
+                  <div key={c.id} style={styles.customerCard}>
+                    <div style={styles.customerHeader}>
+                      <div>
+                        <div style={styles.rowTitle}>{c.name}</div>
+                        <div style={styles.rowSubtitle}>{c.phone || "Sin teléfono"}</div>
+                        <div style={styles.rowSubtitle}>{c.address || "Sin dirección"}</div>
+                      </div>
+                      <div style={styles.vendorGrid}>
+                        <span>Total: <strong>{formatMoney(total)}</strong></span>
+                        <span>Pagado: <strong>{formatMoney(paid)}</strong></span>
+                        <span>Pendiente: <strong>{formatMoney(pending)}</strong></span>
+                      </div>
+                    </div>
+
+                    <div style={styles.customerEditGrid}>
+                      <input
+                        value={c.name}
+                        onChange={(e) => updateCustomer(c.id, "name", e.target.value)}
+                        style={styles.editInput}
+                      />
+                      <input
+                        value={c.phone}
+                        onChange={(e) => updateCustomer(c.id, "phone", e.target.value)}
+                        style={styles.editInput}
+                      />
+                      <input
+                        value={c.address}
+                        onChange={(e) => updateCustomer(c.id, "address", e.target.value)}
+                        style={styles.editInput}
+                      />
+                    </div>
                   </div>
-                  <div style={styles.rowValue}>{formatMoney(c.revenue)}</div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -1034,7 +1018,7 @@ function App() {
   );
 }
 
-export default App;
+// -------------------- ESTILOS --------------------
 
 const styles = {
   page: {
@@ -1219,16 +1203,6 @@ const styles = {
     flexDirection: "column",
     gap: 10,
   },
-  listRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-    background: "#0b1220",
-    borderRadius: 16,
-    border: "1px solid #172033",
-  },
   listRowBlock: {
     display: "flex",
     justifyContent: "space-between",
@@ -1240,14 +1214,6 @@ const styles = {
     border: "1px solid #172033",
     flexWrap: "wrap",
   },
-  badge: {
-    display: "inline-block",
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: "#1e293b",
-    color: "#fda4af",
-    fontSize: 12,
-  },
   rowTitle: {
     fontWeight: 700,
     marginBottom: 4,
@@ -1256,9 +1222,18 @@ const styles = {
     color: "#94a3b8",
     fontSize: 13,
   },
-  rowValue: {
-    fontWeight: 800,
-    fontSize: 18,
+  vendorGrid: {
+    display: "grid",
+    gap: 4,
+    textAlign: "right",
+    color: "#cbd5e1",
+  },
+  emptyState: {
+    padding: 18,
+    borderRadius: 18,
+    background: "#0b1220",
+    border: "1px dashed #334155",
+    color: "#94a3b8",
   },
   filtersRow: {
     display: "flex",
@@ -1299,17 +1274,16 @@ const styles = {
     background: "#020617",
     color: "#fff",
     border: "1px solid #334155",
-    marginBottom: 8,
   },
-  editAmount: {
-    width: 140,
+  editInputSmall: {
+    minWidth: 140,
     padding: 10,
     borderRadius: 10,
     background: "#020617",
     color: "#fff",
     border: "1px solid #334155",
   },
-  editSelect: {
+  editAmount: {
     width: 140,
     padding: 10,
     borderRadius: 10,
@@ -1331,28 +1305,31 @@ const styles = {
     border: "none",
     cursor: "pointer",
   },
-  emptyState: {
-    padding: 18,
-    borderRadius: 18,
-    background: "#0b1220",
-    border: "1px dashed #334155",
-    color: "#94a3b8",
-  },
-  recommendList: {
+  productEditRow: {
     display: "grid",
+    gridTemplateColumns: "2fr 1fr 1fr 1fr",
     gap: 10,
-  },
-  recommendItem: {
     padding: 14,
-    borderRadius: 16,
     background: "#0b1220",
+    borderRadius: 18,
     border: "1px solid #172033",
-    color: "#e2e8f0",
   },
-  vendorGrid: {
+  customerCard: {
+    padding: 14,
+    background: "#0b1220",
+    borderRadius: 18,
+    border: "1px solid #172033",
+  },
+  customerHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 14,
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+  customerEditGrid: {
     display: "grid",
-    gap: 4,
-    textAlign: "right",
-    color: "#cbd5e1",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 10,
   },
 };
