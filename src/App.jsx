@@ -607,28 +607,80 @@ function App() {
             {filteredMovements.length === 0 ? (
               <div style={styles.emptyState}>No hay movimientos con esos filtros.</div>
             ) : (
-              filteredMovements.map((m) => (
-                <div key={m.id} style={styles.movementRow}>
-                  <div>
-                    <div style={styles.rowTitle}>{m.concept}</div>
-                    <div style={styles.rowSubtitle}>
-                      {m.type} · {m.category || m.productCategory || "-"}
-                      {m.customer ? ` · cliente: ${m.customer}` : ""}
-                      {m.vendor ? ` · vendedor: ${m.vendor}` : ""}
-                    </div>
-                    <div style={styles.rowSubtitle}>{formatDate(m.createdAt)}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={m.type === "venta" ? styles.amountPositive : styles.amountNegative}>{formatMoney(m.amount)}</div>
-                    {m.commission ? <div style={styles.rowSubtitle}>comisión {formatMoney(m.commission)}</div> : null}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+filteredMovements.map((m) => (
+  <div key={m.id} style={styles.movementRow}>
 
+    <div>
+      <input
+        value={m.concept}
+        onChange={(e) => {
+          setState(prev => ({
+            ...prev,
+            movements: prev.movements.map(x =>
+              x.id === m.id ? { ...x, concept: e.target.value } : x
+            )
+          }))
+        }}
+        style={{
+          background: "#020617",
+          color: "#fff",
+          border: "1px solid #333",
+          borderRadius: 8,
+          padding: 6,
+          width: "100%"
+        }}
+      />
+
+      <div style={styles.rowSubtitle}>
+        {m.type} · {m.category || m.productCategory || "-"}
+      </div>
+    </div>
+
+    <div style={{ textAlign: "right" }}>
+      <input
+        type="number"
+        value={m.amount}
+        onChange={(e) => {
+          setState(prev => ({
+            ...prev,
+            movements: prev.movements.map(x =>
+              x.id === m.id ? { ...x, amount: Number(e.target.value) } : x
+            )
+          }))
+        }}
+        style={{
+          background: "#020617",
+          color: "#fff",
+          border: "1px solid #333",
+          borderRadius: 8,
+          padding: 6,
+          width: 120
+        }}
+      />
+
+      <button
+        onClick={() => {
+          setState(prev => ({
+            ...prev,
+            movements: prev.movements.filter(x => x.id !== m.id)
+          }))
+        }}
+        style={{
+          marginTop: 6,
+          background: "#7f1d1d",
+          color: "#fff",
+          border: "none",
+          borderRadius: 6,
+          padding: "6px 10px",
+          cursor: "pointer"
+        }}
+      >
+        Eliminar
+      </button>
+    </div>
+
+  </div>
+))
       {activeTab === "productos" && (
         <div style={styles.twoCols}>
           <div style={styles.panel}>
