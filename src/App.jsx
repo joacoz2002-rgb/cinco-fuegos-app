@@ -199,6 +199,20 @@ export default function App() {
   const [typeFilter, setTypeFilter] = useState("todos");
   const [categoryFilter, setCategoryFilter] = useState("todas");
   const [search, setSearch] = useState("");
+  const [state, setState] = useState(initialState);
+const [message, setMessage] = useState("");
+const [activeTab, setActiveTab] = useState("dashboard");
+const [typeFilter, setTypeFilter] = useState("todos");
+const [categoryFilter, setCategoryFilter] = useState("todas");
+const [search, setSearch] = useState("");
+
+const [showNewProduct, setShowNewProduct] = useState(false);
+const [newProduct, setNewProduct] = useState({
+  name: "",
+  price: "",
+  cost: "",
+  category: "",
+});
 
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -212,6 +226,34 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+  function createProduct() {
+  if (!newProduct.name || !newProduct.price) return;
+
+  setState((prev) => ({
+    ...prev,
+    products: [
+      {
+        id: Date.now(),
+        name: newProduct.name,
+        category: newProduct.category || "General",
+        price: Number(newProduct.price),
+        cost: Number(newProduct.cost || 0),
+        includes: "",
+        active: true,
+      },
+      ...prev.products,
+    ],
+  }));
+
+  setNewProduct({
+    name: "",
+    price: "",
+    cost: "",
+    category: "",
+  });
+
+  setShowNewProduct(false);
+}
 
   function addChat(author, text, baseState = state) {
     return {
@@ -926,6 +968,30 @@ export default function App() {
             title="Productos"
             subtitle="Editá nombre, precio, costo y categoría."
           />
+            <button
+    onClick={() => setShowNewProduct(!showNewProduct)}
+    style={{
+      marginBottom: 12,
+      padding: "10px 14px",
+      borderRadius: 10,
+      background: "#e11d48",
+      color: "#fff",
+      border: "none",
+      cursor: "pointer",
+    }}
+  >
+    + Nuevo producto
+  </button>
+
+  {showNewProduct && (
+    <div style={{ marginBottom: 16 }}>
+      ...
+    </div>
+  )}
+
+  // 👇 ESTO YA ESTABA, NO LO TOQUES
+  <div style={styles.stack}>
+    {state.products.map((p) => (
           <div style={styles.stack}>
             {state.products.map((p) => (
               <div key={p.id} style={styles.productEditRow}>
